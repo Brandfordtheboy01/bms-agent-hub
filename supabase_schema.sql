@@ -29,3 +29,4 @@ WITH CHECK (true);
 
 -- Indexes for fast chronological query
 CREATE INDEX IF NOT EXISTS idx_agent_messages_created_at ON public.agent_messages (created_at DESC);
+

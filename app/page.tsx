@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { RefreshCw, Send, Copy, Check, ExternalLink, Bot, User, Globe } from "lucide-react";
+import { RefreshCw, Send, Copy, Check, ExternalLink, Bot, User, Globe, AlertCircle } from "lucide-react";
 
 interface AgentMessage {
   id: string;
@@ -16,8 +16,9 @@ export default function Home() {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Form states - acting as user by default, sent to everyone in group
+  // Form states
   const [sender, setSender] = useState("Henry");
   const [content, setContent] = useState("");
   const [topic, setTopic] = useState("phase-1");
@@ -26,8 +27,17 @@ export default function Home() {
 
   const fetchMessages = async () => {
     try {
+      console.log("[Client] Fetching messages from /api/messages...");
       const res = await fetch("/api/messages?limit=200");
       const data = await res.json();
+      console.log("[Client] Response received:", data);
+
+      if (data.error) {
+        setErrorMessage(data.error);
+      } else {
+        setErrorMessage(null);
+      }
+
       if (data.messages) {
         // Group chat displays in chronological order (oldest to newest)
         const sorted = [...data.messages].sort(
@@ -35,8 +45,9 @@ export default function Home() {
         );
         setMessages(sorted);
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error("[Client] Fetch messages failed:", err);
+      setErrorMessage(err.message || "Failed to reach server");
     } finally {
       setLoading(false);
     }
@@ -44,7 +55,7 @@ export default function Home() {
 
   useEffect(() => {
     fetchMessages();
-    const interval = setInterval(fetchMessages, 5000); // 5s auto-poll
+    const interval = setInterval(fetchMessages, 4000);
     return () => clearInterval(interval);
   }, []);
 
@@ -57,18 +68,28 @@ export default function Home() {
     if (!content.trim()) return;
 
     setPosting(true);
+    setErrorMessage(null);
+    console.log("[Client] Sending message:", { sender, recipient: "Group", topic, content });
+
     try {
       const res = await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sender, recipient: "Group", topic, content }),
       });
-      if (res.ok) {
+      const data = await res.json();
+      console.log("[Client] Send message response:", data);
+
+      if (!res.ok || data.error) {
+        setErrorMessage(data.error || "Failed to send message to database");
+        console.error("[Client] Error sending:", data.error);
+      } else {
         setContent("");
         await fetchMessages();
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error("[Client] Network/Fetch error during send:", err);
+      setErrorMessage(err.message || "Failed to send message");
     } finally {
       setPosting(false);
     }
@@ -180,6 +201,14 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Error / Warning Alert banner */}
+      {errorMessage && (
+        <div className="bg-rose-500/10 border-b border-rose-500/30 px-4 py-2.5 text-xs text-rose-300 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          <span><strong>Database error:</strong> {errorMessage}</span>
+        </div>
+      )}
+
       {/* Group Chat Messages Timeline */}
       <main className="flex-1 overflow-y-auto p-4 space-y-4 bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/60">
         <div className="text-center my-2">
@@ -189,7 +218,11 @@ export default function Home() {
         </div>
 
         {loading && messages.length === 0 ? (
-          <div className="text-center py-20 text-slate-500">Connecting to group feed...</div>
+          <div className="text-center py-20 text-slate-500">Connecting to Supabase...</div>
+        ) : messages.length === 0 ? (
+          <div className="text-center py-20 text-slate-500">
+            No messages found in Supabase table <code className="text-indigo-400">agent_messages</code>. Send a message below!
+          </div>
         ) : (
           messages.map((m) => {
             const isHenry = m.sender.toLowerCase() === "henry";

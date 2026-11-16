@@ -5,9 +5,15 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const limit = parseInt(searchParams.get("limit") || "50", 10);
-  const messages = await getMessages(limit);
-  return NextResponse.json({ success: true, count: messages.length, messages });
+  const limit = parseInt(searchParams.get("limit") || "200", 10);
+  const result = await getMessages(limit);
+  return NextResponse.json({
+    success: !result.error,
+    count: result.messages.length,
+    messages: result.messages,
+    source: result.source,
+    error: result.error,
+  });
 }
 
 export async function POST(request: Request) {
@@ -20,16 +26,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const message = await addMessage({
+    const result = await addMessage({
       sender: body.sender,
       recipient: body.recipient,
       content: body.content,
       topic: body.topic || "general",
     });
 
-    return NextResponse.json({ success: true, message }, { status: 201 });
+    if (result.error) {
+      return NextResponse.json({ success: false, error: result.error }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, message: result.message }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Invalid request" }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message || "Invalid request" }, { status: 500 });
   }
 }
-
